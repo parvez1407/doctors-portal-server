@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
+const nodemailer = require("nodemailer");
+const mg = require('nodemailer-mailgun-transport');
 require('dotenv').config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const port = process.env.PORT || 5000;
@@ -20,6 +22,56 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ktnfrsc.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+
+
+function sendBookingEmail(booking) {
+
+    const { email, treatment, appointmentDate, slot } = booking;
+
+    const auth = {
+        auth: {
+            api_key: process.env.EMAIL_SEND_KEY,
+            domain: process.env.EMAIL_SEND_DOMAIN
+        }
+    }
+
+    const transporter = nodemailer.createTransport(mg(auth));
+
+
+
+    // let transporter = nodemailer.createTransport({
+    //     host: 'smtp.sendgrid.net',
+    //     port: 587,
+    //     auth: {
+    //         user: "apikey",
+    //         pass: process.env.SENDGRID_API_KEY
+    //     }
+    // })
+
+    transporter.sendMail({
+        from: "info.nahidwd@gmail.com", // verified sender email
+        to: email, // recipient email
+        subject: `Your appointment for ${treatment} is confirm`, // Subject line
+        text: "Hello world!", // plain text body
+        html: `
+        <h3>Your appointment is confirmed!</h3>
+        <div>
+        <p>Your appointment for Treatment: ${treatment}</p>
+        <p>Please visit us on  ${appointmentDate} at ${slot}</p>
+        <p>Thanks from Doctors Portal</p>
+        </div>
+        
+        `, // html body
+    }, function (error, info) {
+        if (error) {
+            console.log('Email send Error', error);
+        } else {
+            console.log('Email sent: ' + info.response);
+        }
+    });
+
+}
+
 
 
 function verifyJWT(req, res, next) {
@@ -138,6 +190,8 @@ async function run() {
                 return res.send({ acknowledged: false, message })
             }
             const result = await bookingsCollection.insertOne(booking);
+            // send email about appointment confirmation
+            sendBookingEmail(booking);
             res.send(result);
         })
 
@@ -154,7 +208,7 @@ async function run() {
             res.send({ isAdmin: user?.role === 'admin' });
         })
 
-
+        // create user or register user save in database (step 1)
         app.post('/users', async (req, res) => {
             const user = req.body;
             const result = await usersCollection.insertOne(user);
